@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+env:
+  DEPLOY_ENV: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+
+jobs:
+  deploy:
+    name: Deploy to ${{ env.DEPLOY_ENV }}
+    runs-on: ubuntu-latest
+    environment: ${{ env.DEPLOY_ENV }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy push-service
+        run: echo "Deploying push-service to ${{ env.DEPLOY_ENV }}"
+      - name: Notify Cortex
+        run: |
+          curl -s -X POST https://api.getcortexapp.com/api/v1/catalog/push-service/deploys \
+            -H "Authorization: Bearer ${{ secrets.CORTEX_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"environment":"${{ env.DEPLOY_ENV }}","sha":"${{ github.sha }}","deployer":"${{ github.actor }}"}'
+      - name: Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {"text":":red_circle: *push-service* deploy to *${{ env.DEPLOY_ENV }}* failed"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK }}
